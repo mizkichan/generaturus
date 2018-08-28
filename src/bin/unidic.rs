@@ -1,11 +1,19 @@
+//! Unidic の辞書 (lex.csv) をもとに Genomenon 用の辞書を作成するツール。
+//! - 文語活用の除去
+//! - くだけた音便形の除去
+//! - 記号類の除去
+//! - 固有名詞の除去
 extern crate csv;
+extern crate failure;
+extern crate genomenon;
+extern crate rmp_serde;
+extern crate structopt;
 #[macro_use]
 extern crate serde_derive;
-extern crate failure;
-extern crate structopt;
 
 use failure::Error;
-use std::collections::BTreeSet;
+use genomenon::Word;
+use std::fs::File;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -51,6 +59,9 @@ struct Record {
 struct Opt {
     #[structopt(parse(from_os_str))]
     input: PathBuf,
+
+    #[structopt(parse(from_os_str))]
+    output: PathBuf,
 }
 
 fn main() -> Result<(), Error> {
@@ -60,31 +71,39 @@ fn main() -> Result<(), Error> {
         .has_headers(false)
         .from_path(opt.input)?;
 
-    let mut set = BTreeSet::new();
+    let mut dictionary = Vec::new();
     for result in reader.deserialize::<Record>() {
         let record = result?;
-        set.insert((
-            record.pos1,
-            record.pos2,
-            record.pos3,
-            record.pos4,
-            record.c_form,
-        ));
+        if record.goshu == "記号"
+            || record.pos2 == "固有名詞"
+            || record.c_type.starts_with("文語")
+            || record.c_form == "仮定形-融合"
+            || record.c_form == "未然形-撥音便"
+            || record.c_form == "終止形-促音便"
+            || record.c_form == "終止形-撥音便"
+            || record.c_form == "終止形-融合"
+            || record.c_form == "連体形-ウ音便"
+            || record.c_form == "連体形-撥音便"
+            || record.c_form == "連体形-省略"
+            || record.c_form == "連体形-補助"
+            || record.c_form == "連用形-ウ音便"
+            || record.c_form == "連用形-ニ"
+            || record.c_form == "連用形-省略"
+            || record.c_form == "連用形-融合"
+        {
+            continue;
+        }
+        dictionary.push(Word::new(
+            &record.surface_form,
+            &record.pos1,
+            &record.pos2,
+            &record.pos3,
+            &record.pos4,
+            &record.c_form,
+        )?);
     }
 
-    for value in set {
-        let (pos1, pos2, pos3, pos4, c_form) = value;
-        let (c_form1, c_form2) = c_form
-            .find('-')
-            .map(|i| c_form.split_at(i))
-            .map(|t| (t.0, Some(&t.1[1..])))
-            .unwrap_or((&c_form, None));
-        print!("{}\t{}\t{}\t{}\t{}", pos1, pos2, pos3, pos4, c_form1,);
-        if let Some(c_form2) = c_form2 {
-            print!("\t{}", c_form2);
-        }
-        println!();
-    }
+    rmp_serde::encode::write(&mut File::create(opt.output)?, &dictionary)?;
 
     Ok(())
 }

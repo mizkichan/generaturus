@@ -1,5 +1,12 @@
 #![warn(missing_docs)]
+#![feature(non_ascii_idents, box_syntax)]
 //! Γενόμενον
+extern crate failure;
+#[macro_use]
+extern crate serde_derive;
+
+mod word;
+pub use word::Word;
 
 #[cfg(test)]
 mod tests {
