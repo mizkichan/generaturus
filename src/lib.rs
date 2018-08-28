@@ -5,7 +5,7 @@ extern crate failure;
 #[macro_use]
 extern crate serde_derive;
 
-mod word;
+pub mod word;
 pub use word::Word;
 
 #[cfg(test)]

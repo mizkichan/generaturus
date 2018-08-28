@@ -1,3 +1,5 @@
+//! 単語
+#![allow(missing_docs)]
 use failure::{err_msg, Error};
 
 #[derive(Debug, Serialize)]
@@ -194,7 +196,6 @@ pub struct 接頭辞(String);
 pub struct 連体詞(String);
 
 /// 単語
-#[allow(missing_docs)]
 #[derive(Debug, Serialize)]
 pub enum Word {
     代名詞(代名詞),
