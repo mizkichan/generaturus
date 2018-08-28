@@ -13,6 +13,7 @@ extern crate serde_derive;
 
 use failure::Error;
 use genomenon::Word;
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -69,9 +70,11 @@ fn main() -> Result<(), Error> {
 
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(false)
-        .from_path(opt.input)?;
+        .from_path(&opt.input)?;
 
-    let mut dictionary = Vec::new();
+    let mut dictionary = HashMap::new();
+
+    eprint!("Reading {:?} ... ", opt.input);
     for result in reader.deserialize::<Record>() {
         let record = result?;
         if record.goshu == "記号"
@@ -90,20 +93,32 @@ fn main() -> Result<(), Error> {
             || record.c_form == "連用形-ニ"
             || record.c_form == "連用形-省略"
             || record.c_form == "連用形-融合"
-        {
+            || record.surface_form.chars().any(|c| {
+                c.is_ascii()
+                    || c == '\u{3000}'
+                    || ('\u{ff00}' <= c && c <= '\u{ffef}')
+                    || c > '\u{ffff}'
+            }) {
             continue;
         }
-        dictionary.push(Word::new(
-            &record.surface_form,
-            &record.pos1,
-            &record.pos2,
-            &record.pos3,
-            &record.pos4,
-            &record.c_form,
-        )?);
+        dictionary.insert(
+            record.lid,
+            Word::new(
+                &record.surface_form,
+                &record.pos1,
+                &record.pos2,
+                &record.pos3,
+                &record.pos4,
+                &record.c_form,
+            )?,
+        );
     }
+    eprintln!("done! The dictionary has {} entries.", dictionary.len());
 
-    rmp_serde::encode::write(&mut File::create(opt.output)?, &dictionary)?;
+    eprint!("Writing out into {:?} ... ", opt.output);
+    let dictionary = dictionary.values().collect::<Vec<_>>();
+    rmp_serde::encode::write(&mut File::create(&opt.output)?, &dictionary)?;
+    eprintln!("done!");
 
     Ok(())
 }
