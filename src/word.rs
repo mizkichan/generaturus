@@ -141,10 +141,6 @@ pub struct 形状詞一般(String);
 #[derive(Debug, Serialize, Deserialize)]
 pub struct 形状詞助動詞語幹(String);
 #[derive(Debug, Serialize, Deserialize)]
-pub struct 感動詞フィラー(String);
-#[derive(Debug, Serialize, Deserialize)]
-pub struct 感動詞一般(String);
-#[derive(Debug, Serialize, Deserialize)]
 pub struct 接尾辞動詞的仮定形一般(String);
 #[derive(Debug, Serialize, Deserialize)]
 pub struct 接尾辞動詞的命令形(String);
@@ -267,8 +263,6 @@ pub enum Word {
     形状詞タリ(形状詞タリ),
     形状詞一般(形状詞一般),
     形状詞助動詞語幹(形状詞助動詞語幹),
-    感動詞フィラー(感動詞フィラー),
-    感動詞一般(感動詞一般),
     接尾辞動詞的仮定形一般(接尾辞動詞的仮定形一般),
     接尾辞動詞的命令形(接尾辞動詞的命令形),
     接尾辞動詞的意志推量形(接尾辞動詞的意志推量形),
@@ -597,12 +591,6 @@ impl Word {
             }
             ("形状詞", "助動詞語幹", "*", "*", "*") => {
                 Word::形状詞助動詞語幹(形状詞助動詞語幹(surface_form.to_owned()))
-            }
-            ("感動詞", "フィラー", "*", "*", "*") => {
-                Word::感動詞フィラー(感動詞フィラー(surface_form.to_owned()))
-            }
-            ("感動詞", "一般", "*", "*", "*") => {
-                Word::感動詞一般(感動詞一般(surface_form.to_owned()))
             }
             ("接尾辞", "動詞的", "*", "*", "仮定形-一般") => {
                 Word::接尾辞動詞的仮定形一般(接尾辞動詞的仮定形一般(
