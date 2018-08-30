@@ -6,13 +6,17 @@
 extern crate csv;
 extern crate failure;
 extern crate genomenon;
+extern crate regex;
 extern crate rmp_serde;
 extern crate structopt;
+#[macro_use]
+extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 
 use failure::Error;
 use genomenon::Word;
+use regex::Regex;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
@@ -73,63 +77,10 @@ fn main() -> Result<(), Error> {
         .from_path(&opt.input)?;
 
     let mut dictionary = HashMap::new();
-
     eprint!("Reading {:?} ... ", opt.input);
     for result in reader.deserialize::<Record>() {
         let record = result?;
-        if record.goshu == "記号"
-            || record.pos1 == "感動詞"
-            || record.pos2 == "固有名詞"
-            || record.c_type.starts_with("文語")
-            || record.c_form == "仮定形-融合"
-            || record.c_form == "未然形-撥音便"
-            || record.c_form == "終止形-促音便"
-            || record.c_form == "終止形-撥音便"
-            || record.c_form == "終止形-融合"
-            || record.c_form == "連体形-ウ音便"
-            || record.c_form == "連体形-撥音便"
-            || record.c_form == "連体形-省略"
-            || record.c_form == "連体形-補助"
-            || record.c_form == "連用形-ウ音便"
-            || record.c_form == "連用形-ニ"
-            || record.c_form == "連用形-省略"
-            || record.c_form == "連用形-融合"
-            || (record.pos1 == "名詞"
-                && (record.surface_form.contains("うぃ")
-                    || record.surface_form.contains("うぇ")
-                    || record.surface_form.contains("うぉ")))
-            || (record.c_form == "意志推量形"
-                && (record.surface_form.ends_with("はう")
-                    || record.surface_form.ends_with("へよ")
-                    || record.surface_form.ends_with("まう")
-                    || record.surface_form.ends_with('っ')
-                    || record.surface_form.ends_with('ふ')))
-            || (record.c_form.ends_with("促音便") && record.surface_form.ends_with('ッ'))
-            || (record.pos1 != "助詞" && record.surface_form.contains('を'))
-            || record.surface_form.contains("ぁー")
-            || record.surface_form.contains("ぃー")
-            || record.surface_form.contains("ぅー")
-            || record.surface_form.contains("ぇー")
-            || record.surface_form.contains("ぉー")
-            || record.surface_form.contains("っっ")
-            || record.surface_form.contains("ーー")
-            || record.surface_form.contains("っっ")
-            || record.surface_form.chars().any(|c| {
-                c.is_ascii()
-                    || c == 'ぢ'
-                    || c == 'ゐ'
-                    || c == 'ゑ'
-                    || c == 'ヂ'
-                    || c == 'ヰ'
-                    || c == 'ヱ'
-                    || c == 'ヲ'
-                    || c == '\u{2010}' // ハイフン
-                    || c == '\u{2167}' // ローマ数字の8
-                    || ('\u{3000}' <= c && c <= '\u{303f}' && c != '々') // 約物
-                    || ('\u{309b}' <= c && c <= '\u{309e}') // 濁点/半濁点/繰り返し記号
-                    || ('\u{30f7}' <= c && c <= '\u{30ff}' && c != 'ー') // (ワ/ヰ/ヱ/ヲ)の濁音/中黒/繰り返し記号/コト記号
-                    || ('\u{ff00}' <= c && c <= '\u{ffef}') // 全角英数
-            }) {
+        if is_bad_record(&record) {
             continue;
         }
         dictionary.insert(
@@ -152,4 +103,75 @@ fn main() -> Result<(), Error> {
     eprintln!("done!");
 
     Ok(())
+}
+
+fn is_bad_record(
+    &Record {
+        ref surface_form,
+        ref pos1,
+        ref pos2,
+        ref c_type,
+        ref c_form,
+        ref goshu,
+        ..
+    }: &Record,
+) -> bool {
+    lazy_static! {
+        static ref filter_pattern: Regex = Regex::new(
+            r"(?x)
+            [[:ascii:]]
+            | (?:う[ぁ-ぉ])
+            | (?:[ぁ-ぉ][ぁ-ぉ])
+            | [ぢゐゑヂヰヱヲヵ゛゜ゝゞヽヾ]
+            | [^\u{30a1}-\u{30ff}]+[＝・ー][^\u{30a1}-\u{30ff}]*  # カタカナ以外と一緒に使われる [＝・ー]
+
+            | \u{2010}  # ハイフン
+            | [\u{2150}-\u{218f}]  # ローマ数字など
+            | [\u{3000}-\u{303f}--々]  # 約物 ('々' を除く)
+            | [\u{ff00}-\u{ffef}]  # 全角英数, 半角カナ等
+        ",
+        ).unwrap();
+    }
+
+    goshu == "記号"
+        || pos1 == "感動詞"
+        || pos2 == "固有名詞"
+        || c_type.starts_with("文語")
+        || c_form == "仮定形-融合"
+        || c_form == "未然形-撥音便"
+        || c_form == "終止形-促音便"
+        || c_form == "終止形-撥音便"
+        || c_form == "終止形-融合"
+        || c_form == "連体形-ウ音便"
+        || c_form == "連体形-撥音便"
+        || c_form == "連体形-省略"
+        || c_form == "連体形-補助"
+        || c_form == "連用形-ウ音便"
+        || c_form == "連用形-ニ"
+        || c_form == "連用形-省略"
+        || c_form == "連用形-融合"
+        || (c_form == "意志推量形"
+            && (surface_form.ends_with("はう")
+                || surface_form.ends_with("へよ")
+                || surface_form.ends_with("まう")
+                || surface_form.ends_with('っ')
+                || surface_form.ends_with('ふ')))
+        || (pos1 != "助詞" && surface_form.contains('を'))
+        || (pos1 != "名詞" && surface_form.contains('ヶ'))
+        || filter_pattern.is_match(&surface_form)
+        || ((pos1 == "副詞" || pos1 == "接尾辞") && {
+            let l = surface_form.chars().count();
+            let ci = surface_form.char_indices();
+            l >= 3
+                && (0..=l - 3)
+                    .map(|i| {
+                        let begin = ci.clone().nth(i).unwrap().0;
+                        let end = ci
+                            .clone()
+                            .nth(i + 3)
+                            .map(|t| t.0)
+                            .unwrap_or(surface_form.len());
+                        &surface_form[begin..end]
+                    }).any(|s| s.chars().zip(s.chars().skip(1)).all(|(a, b)| a == b))
+        })
 }
