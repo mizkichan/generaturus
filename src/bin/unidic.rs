@@ -3,23 +3,26 @@
 //! - くだけた音便形の除去
 //! - 記号類の除去
 //! - 固有名詞の除去
+#![feature(nll, non_ascii_idents)]
 extern crate csv;
 extern crate failure;
 extern crate genomenon;
 extern crate regex;
 extern crate rmp_serde;
+extern crate serde_json;
 extern crate structopt;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 
-use failure::Error;
+use failure::{err_msg, Error};
 use genomenon::Word;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
+use std::str::FromStr;
 use structopt::StructOpt;
 
 #[derive(Debug, Deserialize)]
@@ -62,11 +65,37 @@ struct Record {
 #[derive(Debug, StructOpt)]
 #[structopt()]
 struct Opt {
+    #[structopt(
+        short = "f",
+        long = "format",
+        default_value = "msgpack",
+        parse(try_from_str = "Format::from_str")
+    )]
+    format: Format,
+
     #[structopt(parse(from_os_str))]
     input: PathBuf,
 
     #[structopt(parse(from_os_str))]
     output: PathBuf,
+}
+
+#[derive(Debug)]
+enum Format {
+    MessagePack,
+    JSON,
+}
+
+impl FromStr for Format {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Format, Error> {
+        match s {
+            "msgpack" => Ok(Format::MessagePack),
+            "json" => Ok(Format::JSON),
+            _ => Err(err_msg(format!("Invalid string: {}", s))),
+        }
+    }
 }
 
 fn main() -> Result<(), Error> {
@@ -76,30 +105,45 @@ fn main() -> Result<(), Error> {
         .has_headers(false)
         .from_path(&opt.input)?;
 
-    let mut dictionary = HashMap::new();
+    let mut records = HashMap::<_, Vec<_>>::new();
     eprint!("Reading {:?} ... ", opt.input);
     for result in reader.deserialize::<Record>() {
         let record = result?;
         if is_bad_record(&record) {
             continue;
         }
-        dictionary.insert(
-            record.lid,
-            Word::new(
-                &record.surface_form,
-                &record.pos1,
-                &record.pos2,
-                &record.pos3,
-                &record.pos4,
-                &record.c_form,
-            )?,
+
+        let key = (
+            record.pos1,
+            record.pos2,
+            record.pos3,
+            record.pos4,
+            record.c_form,
+            record.pron,
+            record.lemma_id,
         );
+        if let Some(surface_forms) = records.get_mut(&key) {
+            surface_forms.push(record.surface_form);
+        } else {
+            records.insert(key, vec![record.surface_form]);
+        }
     }
+    eprintln!("done!");
+
+    eprint!("Collecting words ... ");
+    let dictionary = records
+        .into_iter()
+        .map(|((pos1, pos2, pos3, pos4, c_form, ..), surface_forms)| {
+            Word::new(surface_forms, &pos1, &pos2, &pos3, &pos4, &c_form)
+        }).collect::<Result<Vec<Word>, _>>()?;
     eprintln!("done! The dictionary has {} entries.", dictionary.len());
 
     eprint!("Writing out into {:?} ... ", opt.output);
-    let dictionary = dictionary.values().collect::<Vec<_>>();
-    rmp_serde::encode::write(&mut File::create(&opt.output)?, &dictionary)?;
+    let mut file = File::create(&opt.output)?;
+    match opt.format {
+        Format::MessagePack => rmp_serde::encode::write(&mut file, &dictionary)?,
+        Format::JSON => serde_json::to_writer_pretty(file, &dictionary)?,
+    }
     eprintln!("done!");
 
     Ok(())
@@ -109,35 +153,83 @@ fn is_bad_record(
     &Record {
         ref surface_form,
         ref pos1,
-        ref pos2,
         ref c_type,
         ref c_form,
         ref goshu,
+        ref kana,
+        ref form,
+        ref pron,
         ..
     }: &Record,
 ) -> bool {
     lazy_static! {
-        static ref filter_pattern: Regex = Regex::new(
-            r"(?x)
-            [[:ascii:]]
-            | (?:う[ぁ-ぉ])
-            | (?:[ぁ-ぉ][ぁ-ぉ])
-            | [ぢゐゑヂヰヱヲヵ゛゜ゝゞヽヾ]
-            | [^\u{30a1}-\u{30ff}]+[＝・ー][^\u{30a1}-\u{30ff}]*  # カタカナ以外と一緒に使われる [＝・ー]
-
-            | \u{2010}  # ハイフン
-            | [\u{2150}-\u{218f}]  # ローマ数字など
-            | [\u{3000}-\u{303f}--々]  # 約物 ('々' を除く)
-            | [\u{ff00}-\u{ffef}]  # 全角英数, 半角カナ等
-        ",
+        static ref allowed_characters: Regex = Regex::new(
+            r"(?x)^[
+                \u{4e00}-\u{9fef}  # CJK統合漢字
+                \u{3400}-\u{4db5}  # CJK統合漢字拡張A
+                \u{f900}-\u{faff}  # CJK互換漢字 (後で正規化すること)
+                \u{3040}-\u{309f}  # 平仮名
+                \u{30a0}-\u{30ff}  # 片仮名
+                \u{3005}  # 々
+                &&[^
+                    \u{308e}  # ゎ
+                    \u{3090}  # ゐ
+                    \u{3091}  # ゑ
+                    \u{3094}-\u{309f}  # ゔ/ゕ/ゖ/゛/゜ゝ/ゞ/ゟ
+                    \u{30c2}  # ヂ
+                    \u{30ee}  # ヮ
+                    \u{30f0}-\u{30f2}  # ヰ/ヱ/ヲ
+                    \u{30f5}-\u{30fa}  # ヵ/ヶ/ヷ/ヸ/ヹ/ヺ
+                    \u{30fd}-\u{30ff}  # ヽ/ヾ/ヿ
+                ]
+            ]+$"
         ).unwrap();
     }
+    lazy_static! {
+        static ref all_kanji: Regex =
+            Regex::new(r"^[\u{4e00}-\u{9fef}\u{3400}-\u{4db5}\u{f900}-\u{faff}]$").unwrap();
+    }
+    lazy_static! {
+        static ref ugly_patterns: Regex = Regex::new(r"(?x)
+            [^\u{30a0}-\u{30ff}][＝・ー]|[＝・ー][^\u{30a0}-\u{30ff}]  # カタカナ以外と一緒に使われる二重ハイフン/中黒/長音符
+            | っっ
+            | ーー
+        ").unwrap();
+    }
+    lazy_static! {
+        static ref 意志推量形仮名フィルタ: Regex = Regex::new(
+            r"(?x)
+            | (?:[アサカタナハマヤラワガザダナバパ][ウフ]$)
+            | (?:[オコソトノホモヨロヲゴゾドノボポ]フ$)
+        "
+        ).unwrap();
+    }
+    lazy_static! {
+        static ref 意志推量形発音フィルタ: Regex =
+            Regex::new(r"[オコソトノホモヨロヲゴゾドノボポォョッン]$").unwrap();
+    }
 
-    goshu == "記号"
-        || pos1 == "感動詞"
-        || pos2 == "固有名詞"
-        || c_type.starts_with("文語")
-        || c_form == "仮定形-融合"
+    if !allowed_characters.is_match(surface_form) {
+        return true;
+    }
+
+    if ugly_patterns.is_match(surface_form) {
+        return true;
+    }
+
+    if goshu == "記号" {
+        return true;
+    }
+
+    if pos1 == "感動詞" {
+        return true;
+    }
+
+    if c_type.starts_with("文語") {
+        return true;
+    }
+
+    if c_form == "仮定形-融合"
         || c_form == "未然形-撥音便"
         || c_form == "終止形-促音便"
         || c_form == "終止形-撥音便"
@@ -150,28 +242,97 @@ fn is_bad_record(
         || c_form == "連用形-ニ"
         || c_form == "連用形-省略"
         || c_form == "連用形-融合"
-        || (c_form == "意志推量形"
-            && (surface_form.ends_with("はう")
-                || surface_form.ends_with("へよ")
-                || surface_form.ends_with("まう")
-                || surface_form.ends_with('っ')
-                || surface_form.ends_with('ふ')))
-        || (pos1 != "助詞" && surface_form.contains('を'))
-        || (pos1 != "名詞" && surface_form.contains('ヶ'))
-        || filter_pattern.is_match(&surface_form)
-        || ((pos1 == "副詞" || pos1 == "接尾辞") && {
-            let l = surface_form.chars().count();
-            let ci = surface_form.char_indices();
-            l >= 3
-                && (0..=l - 3)
-                    .map(|i| {
-                        let begin = ci.clone().nth(i).unwrap().0;
-                        let end = ci
-                            .clone()
-                            .nth(i + 3)
-                            .map(|t| t.0)
-                            .unwrap_or(surface_form.len());
-                        &surface_form[begin..end]
-                    }).any(|s| s.chars().zip(s.chars().skip(1)).all(|(a, b)| a == b))
-        })
+    {
+        return true;
+    }
+
+    match (
+        surface_form == kana,
+        surface_form == form,
+        surface_form == pron,
+        kana == form,
+        kana == pron,
+        form == pron,
+    ) {
+        //  全一致のカタカナ語
+        (true, true, true, true, true, true) => (),
+        // 仮名出現形のみ不一致のカタカナ語。
+        // 仮名出現形の転写ミスで、↑と同一視してよい
+        (false, true, true, false, false, true) => (),
+        //  表層形のみ不一致
+        (false, false, false, true, true, true) => {
+            // 汚いハックだけど辞書が間違ってんだから仕方ない
+            if c_form == "命令形"
+                && ((kana != "ヘヨ" && kana.ends_with("ヘヨ"))
+                    || (kana != "ヘロ" && kana.ends_with("ヘロ")))
+            {
+                return true;
+            }
+        }
+        // 発音のみ不一致のカタカナ語
+        (true, true, false, true, false, false) => (),
+        // 表層形と語形出現形のみ一致 (「アロウズ」「ノーマライゼイション」のみ)
+        // 仮名出現形の転写ミスで、↑と同一視してよい
+        (false, true, false, false, false, false) => (),
+        // 仮名出現形と語形出現形のみ一致
+        (false, false, false, true, false, false) => {
+            // 汚いハックだけど辞書が間違ってんだから仕方ない
+            if (c_form == "終止形-一般" || c_form == "連体形-一般")
+                && kana.ends_with('フ')
+            {
+                return true;
+            }
+
+            if c_form == "意志推量形"
+                && pron.ends_with('ー')
+                && 意志推量形仮名フィルタ.is_match(kana)
+            {
+                return true;
+            }
+
+            // 悲惨だけど仕方ない
+            if surface_form == "出やう" {
+                return true;
+            }
+        }
+
+        // 表層形と仮名出現形、語形出現形と発音がそれぞれ一致のカタカナ語
+        // 表層形と仮名出現形のみ一致のカタカナ語
+        (true, false, false, false, false, true) | (true, false, false, false, false, false) => {
+            // 「クラヴィア」「クラビア」のように許容可能なものと、
+            // 「センチユリー」のように許容不能なものがある
+        }
+
+        // 語形出現形と発音のみ一致
+        (false, false, false, false, false, true) => {
+            // 旧仮名遣いがほとんどだが、表層形が漢字のみの語彙については許容可能
+            // もっとましな方法ないの
+            if !all_kanji.is_match(surface_form) {
+                return true;
+            }
+        }
+
+        // 語形出現形のみ不一致のカタカナ語
+        // 表層形と発音、仮名出現形と語形出現形がそれぞれ一致のカタカナ語
+        // (仮名出現形の転写ミスで、同一視してよい)
+        (true, false, true, false, true, false) | (false, false, true, true, false, false) => {
+            // 「ビョーキ」のようなものが多く許容しない方が良いかも知れない
+            return true;
+        }
+
+        // 仮名出現形と発音のみ一致
+        // 全て不一致
+        (false, false, false, false, true, false) | (false, false, false, false, false, false) => {
+            // たぶん許容不能
+            return true;
+        }
+
+        otherwise => panic!("Unknown pattern: {:?}", otherwise),
+    }
+
+    if c_form == "意志推量形" && 意志推量形発音フィルタ.is_match(pron) {
+        return true;
+    }
+
+    false
 }
