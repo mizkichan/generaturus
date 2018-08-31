@@ -20,7 +20,7 @@ extern crate serde_derive;
 use failure::{err_msg, Error};
 use genomenon::Word;
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -107,7 +107,7 @@ fn main() -> Result<(), Error> {
         .has_headers(false)
         .from_path(&opt.input)?;
 
-    let mut records = HashMap::<_, Vec<_>>::new();
+    let mut records = HashMap::<_, HashSet<_>>::new();
     eprint!("Reading {:?} ... ", opt.input);
     for result in reader.deserialize::<Record>() {
         let record = result?;
@@ -124,30 +124,39 @@ fn main() -> Result<(), Error> {
             record.pron,
             record.lemma_id,
         );
+
+        // Normalization
+        let mut surface_form = record.surface_form;
+        if !unicode_normalization::is_nfc(&surface_form) {
+            surface_form = surface_form.nfc().collect();
+        }
+
         if let Some(surface_forms) = records.get_mut(&key) {
-            surface_forms.push(record.surface_form);
+            surface_forms.insert(surface_form);
         } else {
-            records.insert(key, vec![record.surface_form]);
+            let mut surface_forms = HashSet::new();
+            surface_forms.insert(surface_form);
+            records.insert(key, surface_forms);
         }
     }
     eprintln!("done!");
 
     eprint!("Collecting words ... ");
-    let dictionary = records
-        .into_iter()
-        .map(|((pos1, pos2, pos3, pos4, c_form, ..), surface_forms)| {
-            Word::new(
-                surface_forms
-                    .into_iter()
-                    .map(|surface_form| surface_form.nfkc().collect())
-                    .collect(),
-                &pos1,
-                &pos2,
-                &pos3,
-                &pos4,
-                &c_form,
-            )
-        }).collect::<Result<Vec<Word>, _>>()?;
+    let mut dictionary = Vec::new();
+    for ((pos1, pos2, pos3, pos4, c_form, pron, ..), surface_forms) in records {
+        let mut surface_forms = surface_forms.into_iter().collect::<Vec<_>>();
+        surface_forms.sort();
+        dictionary.push(Word::new(
+            surface_forms,
+            pron,
+            &pos1,
+            &pos2,
+            &pos3,
+            &pos4,
+            &c_form,
+        )?);
+    }
+    dictionary.sort();
     eprintln!("done! The dictionary has {} entries.", dictionary.len());
 
     eprint!("Writing out into {:?} ... ", opt.output);
