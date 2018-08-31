@@ -11,6 +11,7 @@ extern crate regex;
 extern crate rmp_serde;
 extern crate serde_json;
 extern crate structopt;
+extern crate unicode_normalization;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -24,6 +25,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
 use structopt::StructOpt;
+use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Deserialize)]
 struct Record {
@@ -134,7 +136,17 @@ fn main() -> Result<(), Error> {
     let dictionary = records
         .into_iter()
         .map(|((pos1, pos2, pos3, pos4, c_form, ..), surface_forms)| {
-            Word::new(surface_forms, &pos1, &pos2, &pos3, &pos4, &c_form)
+            Word::new(
+                surface_forms
+                    .into_iter()
+                    .map(|surface_form| surface_form.nfkc().collect())
+                    .collect(),
+                &pos1,
+                &pos2,
+                &pos3,
+                &pos4,
+                &c_form,
+            )
         }).collect::<Result<Vec<Word>, _>>()?;
     eprintln!("done! The dictionary has {} entries.", dictionary.len());
 
