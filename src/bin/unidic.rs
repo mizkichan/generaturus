@@ -20,7 +20,7 @@ extern crate serde_derive;
 use failure::{err_msg, Error};
 use genomenon::Word;
 use regex::Regex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -107,7 +107,7 @@ fn main() -> Result<(), Error> {
         .has_headers(false)
         .from_path(&opt.input)?;
 
-    let mut records = HashMap::<_, HashSet<_>>::new();
+    let mut records = HashMap::<_, Vec<_>>::new();
     eprint!("Reading {:?} ... ", opt.input);
     for result in reader.deserialize::<Record>() {
         let record = result?;
@@ -132,11 +132,9 @@ fn main() -> Result<(), Error> {
         }
 
         if let Some(surface_forms) = records.get_mut(&key) {
-            surface_forms.insert(surface_form);
+            surface_forms.push(surface_form);
         } else {
-            let mut surface_forms = HashSet::new();
-            surface_forms.insert(surface_form);
-            records.insert(key, surface_forms);
+            records.insert(key, vec![surface_form]);
         }
     }
     eprintln!("done!");
@@ -145,7 +143,8 @@ fn main() -> Result<(), Error> {
     let mut dictionary = Vec::new();
     for ((pos1, pos2, pos3, pos4, c_form, pron, ..), surface_forms) in records {
         let mut surface_forms = surface_forms.into_iter().collect::<Vec<_>>();
-        surface_forms.sort();
+        surface_forms.sort_unstable();
+        surface_forms.dedup();
         dictionary.push(Word::new(
             surface_forms,
             pron,
@@ -156,7 +155,7 @@ fn main() -> Result<(), Error> {
             &c_form,
         )?);
     }
-    dictionary.sort();
+    dictionary.sort_unstable();
     eprintln!("done! The dictionary has {} entries.", dictionary.len());
 
     eprint!("Writing out into {:?} ... ", opt.output);
