@@ -7,6 +7,7 @@ extern crate serde_derive;
 
 pub mod word;
 pub use word::Word;
+pub mod rules;
 
 #[cfg(test)]
 mod tests {
