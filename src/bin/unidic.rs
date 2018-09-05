@@ -18,7 +18,7 @@ extern crate lazy_static;
 extern crate serde_derive;
 
 use failure::{err_msg, Error};
-use genomenon::Word;
+use genomenon::{word::WordKind, Word};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs::File;
@@ -146,14 +146,10 @@ fn main() -> Result<(), Error> {
         surface_forms.sort_unstable();
         surface_forms.dedup();
         dictionary.push(Word::new(
+            WordKind::new(&pos1, &pos2, &pos3, &pos4, &c_form)?,
             surface_forms,
             pron,
-            &pos1,
-            &pos2,
-            &pos3,
-            &pos4,
-            &c_form,
-        )?);
+        ));
     }
     dictionary.sort_unstable();
     eprintln!("done! The dictionary has {} entries.", dictionary.len());
