@@ -18,7 +18,7 @@ extern crate lazy_static;
 extern crate serde_derive;
 
 use failure::{err_msg, Error};
-use genomenon::{word::WordKind, Word};
+use genomenon::{Word, WordKind};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs::File;

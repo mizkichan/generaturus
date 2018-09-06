@@ -1,4 +1,3 @@
-//! 単語
 use failure::{err_msg, Error};
 
 /// 単語
