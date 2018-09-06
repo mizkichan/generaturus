@@ -1,7 +1,10 @@
 use failure::{err_msg, Error};
+use rand;
+use rand::seq::IteratorRandom;
+use Symbol;
 
 /// 単語
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Word {
     kind: WordKind,
     surface_forms: Vec<String>,
@@ -21,7 +24,7 @@ impl Word {
 
 /// 品詞
 #[allow(missing_docs)]
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum WordKind {
     代名詞,
     副詞,
@@ -394,5 +397,18 @@ impl WordKind {
                 )))
             }
         })
+    }
+}
+
+impl Symbol for WordKind {
+    type Output = Word;
+
+    fn generate(&self, dict: &[Word]) -> Word {
+        let mut rng = rand::thread_rng();
+        dict.iter()
+            .filter(|word| &word.kind == self)
+            .choose(&mut rng)
+            .unwrap()
+            .clone()
     }
 }
