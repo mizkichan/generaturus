@@ -1,6 +1,7 @@
 use failure::{err_msg, Error};
 use rand;
 use rand::seq::IteratorRandom;
+use Rule;
 use Symbol;
 
 /// 単語
@@ -21,6 +22,8 @@ impl Word {
         }
     }
 }
+
+impl Symbol for Word {}
 
 /// 品詞
 #[allow(missing_docs)]
@@ -400,9 +403,7 @@ impl WordKind {
     }
 }
 
-impl Symbol for WordKind {
-    type Output = Word;
-
+impl Rule<Word> for WordKind {
     fn generate(&self, dict: &[Word]) -> Word {
         let mut rng = rand::thread_rng();
         dict.iter()
