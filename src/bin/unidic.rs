@@ -145,11 +145,10 @@ fn main() -> Result<(), Error> {
         let mut surface_forms = surface_forms.into_iter().collect::<Vec<_>>();
         surface_forms.sort_unstable();
         surface_forms.dedup();
-        dictionary.push(Word::new(
-            WordKind::new(&pos1, &pos2, &pos3, &pos4, &c_form)?,
-            surface_forms,
-            pron,
-        ));
+        for surface_form in surface_forms {
+            let kind = WordKind::new(&pos1, &pos2, &pos3, &pos4, &c_form)?;
+            dictionary.push(Word::new(kind.clone(), surface_form, &pron));
+        }
     }
     dictionary.sort_unstable();
     eprintln!("done! The dictionary has {} entries.", dictionary.len());

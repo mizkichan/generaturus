@@ -8,17 +8,21 @@ use Symbol;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Word {
     kind: WordKind,
-    surface_forms: Vec<String>,
+    surface_form: String,
     pron: String,
 }
 
 impl Word {
     /// 表層形、品詞情報、変化形から単語を作成します。
-    pub fn new(kind: WordKind, surface_forms: Vec<String>, pron: String) -> Word {
+    pub fn new<S, P>(kind: WordKind, surface_form: S, pron: P) -> Word
+    where
+        S: ToString,
+        P: ToString,
+    {
         Word {
             kind,
-            surface_forms,
-            pron,
+            surface_form: surface_form.to_string(),
+            pron: pron.to_string(),
         }
     }
 }
