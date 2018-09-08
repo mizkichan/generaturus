@@ -22,7 +22,7 @@ fn main() -> Result<(), Error> {
     let dict = rmp_serde::from_read::<_, Vec<Word>>(File::open(opt.input)?)?;
 
     for _ in 0..10 {
-        println!("{:?}", RuleKind::格助詞句.generate(&dict))
+        println!("{:?}", PhraseKind::格助詞句.generate(&dict))
     }
 
     Ok(())

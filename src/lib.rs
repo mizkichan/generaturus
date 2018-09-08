@@ -7,10 +7,12 @@ extern crate rand;
 #[macro_use]
 extern crate serde_derive;
 
-mod rules;
+mod phrase;
+mod rule;
 mod word;
 
-pub use rules::*;
+pub use phrase::*;
+pub use rule::*;
 pub use word::*;
 
 #[cfg(test)]

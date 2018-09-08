@@ -1,13 +1,8 @@
 use rand;
 use rand::seq::IteratorRandom;
+use Rule;
 use Word;
 use WordKind;
-
-/// 生成規則
-pub trait Rule<T> {
-    /// 生成します。
-    fn generate(&self, dict: &[Word]) -> T;
-}
 
 /// 句構造
 #[allow(missing_docs)]
@@ -19,17 +14,17 @@ pub enum Phrase {
 
 /// 生成規則
 #[allow(missing_docs)]
-#[derive(Debug, Clone)]
-pub enum RuleKind {
+#[derive(Debug)]
+pub enum PhraseKind {
     名詞,
     格助詞句,
 }
 
-impl Rule<Phrase> for RuleKind {
+impl Rule<Phrase> for PhraseKind {
     fn generate(&self, dict: &[Word]) -> Phrase {
         let mut rng = rand::thread_rng();
         match self {
-            RuleKind::名詞 => Phrase::Node({
+            PhraseKind::名詞 => Phrase::Node({
                 [
                     WordKind::名詞_助動詞語幹,
                     WordKind::名詞_固有名詞_一般,
@@ -52,8 +47,8 @@ impl Rule<Phrase> for RuleKind {
                     .generate(dict)
             }),
 
-            RuleKind::格助詞句 => Phrase::Branch(
-                box RuleKind::名詞.generate(dict),
+            PhraseKind::格助詞句 => Phrase::Branch(
+                box PhraseKind::名詞.generate(dict),
                 box Phrase::Node(WordKind::助詞_格助詞.generate(dict)),
             ),
         }
