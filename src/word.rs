@@ -2,7 +2,6 @@ use failure::{err_msg, Error};
 use rand;
 use rand::seq::IteratorRandom;
 use Rule;
-use Symbol;
 
 /// 単語
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -26,8 +25,6 @@ impl Word {
         }
     }
 }
-
-impl Symbol for Word {}
 
 /// 品詞
 #[allow(missing_docs)]

@@ -3,32 +3,19 @@ use rand::seq::IteratorRandom;
 use Word;
 use WordKind;
 
-use std::fmt;
-
 /// 生成規則
 pub trait Rule<T> {
     /// 生成します。
     fn generate(&self, dict: &[Word]) -> T;
 }
 
-/// 終端/非終端記号
-pub trait Symbol: fmt::Debug {}
-
 /// 句構造
+#[allow(missing_docs)]
 #[derive(Debug)]
-pub struct Phrase {
-    kind: RuleKind,
-    children: Vec<Box<dyn Symbol>>,
+pub enum Phrase {
+    Branch(Box<Phrase>, Box<Phrase>),
+    Node(Word),
 }
-
-impl Phrase {
-    /// 生成規則と子要素から句構造を作成します。
-    pub fn new(kind: RuleKind, children: Vec<Box<dyn Symbol>>) -> Phrase {
-        Phrase { kind, children }
-    }
-}
-
-impl Symbol for Phrase {}
 
 /// 生成規則
 #[allow(missing_docs)]
@@ -41,9 +28,9 @@ pub enum RuleKind {
 impl Rule<Phrase> for RuleKind {
     fn generate(&self, dict: &[Word]) -> Phrase {
         let mut rng = rand::thread_rng();
-        let children = match self {
-            RuleKind::名詞 => vec![
-                box [
+        match self {
+            RuleKind::名詞 => Phrase::Node({
+                [
                     WordKind::名詞_助動詞語幹,
                     WordKind::名詞_固有名詞_一般,
                     WordKind::名詞_固有名詞_人名_一般,
@@ -62,15 +49,13 @@ impl Rule<Phrase> for RuleKind {
                     .iter()
                     .choose(&mut rng)
                     .unwrap()
-                    .generate(dict) as Box<dyn Symbol>,
-            ],
+                    .generate(dict)
+            }),
 
-            RuleKind::格助詞句 => vec![
-                box RuleKind::名詞.generate(dict) as Box<dyn Symbol>,
-                box WordKind::助詞_格助詞.generate(dict) as Box<dyn Symbol>,
-            ],
-        };
-
-        Phrase::new(self.clone(), children)
+            RuleKind::格助詞句 => Phrase::Branch(
+                box RuleKind::名詞.generate(dict),
+                box Phrase::Node(WordKind::助詞_格助詞.generate(dict)),
+            ),
+        }
     }
 }
